@@ -81,7 +81,9 @@ class JsonSerde(object):
    
 def check_access_token(token):
     client_id = APP.config['PYCSW_CONFIG']['oauth'].get('client_id', True)
+    print('client_id: ' + client_id)
     client_secret = APP.config['PYCSW_CONFIG']['oauth'].get('client_secret', True)
+    print('client_secret: ' + client_secret)
     credentials = base64.b64encode(bytes('{}:{}'.format(client_id,client_secret),'utf-8')).decode('ascii')
     token_url = 'https://www.authenix.eu/oauth/tokeninfo'
     header = {'Authorization': "Basic {}".format(credentials), 'Content-Type': 'application/x-www-form-urlencoded'}
@@ -638,7 +640,7 @@ if __name__ == '__main__':
     print(f'Serving on port {port}')
     APP.run(debug=True, host='0.0.0.0', port=port)
 
-    application.run()
+    #application.run()
 
 
 

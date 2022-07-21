@@ -5,3 +5,8 @@ OWSLib
 pyproj
 Shapely
 xmltodict
+pymemcache
+pycryptodome
+python-jose
+pycrypto
+cryptography
