@@ -47,7 +47,7 @@ from sqlalchemy.sql import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import create_session
 
-from pycsw.core import util
+from pycsw.core import util, metadata
 from pycsw.core.etree import etree
 from pycsw.core.etree import PARSER
 

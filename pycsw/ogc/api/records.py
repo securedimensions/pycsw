@@ -31,14 +31,14 @@
 
 from configparser import ConfigParser
 import logging
-import os
+import os, json
 from urllib.parse import urlencode
 
 from pygeofilter.parsers.ecql import parse as parse_ecql
 from pygeofilter.parsers.cql2_json import parse as parse_cql2_json
 
 from pycsw import __version__
-from pycsw.core import log
+from pycsw.core import log, util, metadata
 from pycsw.core.config import StaticContext
 from pycsw.core.pygeofilter_evaluate import to_filter
 from pycsw.core.util import bind_url, jsonify_links, load_custom_repo_mappings, wkt2geom
@@ -176,7 +176,12 @@ class API:
                 content_type = 'text/html'
             elif 'application/xml' in headers['Accept']:
                 content_type = 'application/xml'
+            elif 'application/dcs+geo' in headers['Accept']:
+                content_type = 'application/dcs+geo'
+            elif 'application/jose' in headers['Accept']:
+                content_type = 'application/jose'
 
+        print("content_type: " + content_type)
         if format_ is not None:
             if format_ == 'json':
                 content_type = 'application/json'
@@ -184,7 +189,12 @@ class API:
                 content_type = 'application/xml'
             elif format_ == 'html':
                 content_type = 'text/html'
+            elif format_ == 'dcs+geo':
+                content_type = 'application/dcs+geo'
+            elif format_ == 'jose':
+                content_type = 'application/jose'
 
+        print("content_type: " + content_type)
         return content_type
 
     def get_response(self, status, headers, template, data):
@@ -497,7 +507,13 @@ class API:
         :returns: tuple of headers, status code, content
         """
 
+        print(args)
+        print(headers_['Accept'])
         headers_['Content-Type'] = self.get_content_type(headers_, args)
+
+
+        if headers_['Content-Type'] == 'application/xml':
+            return headers_, 400, '<?xml version="1.0" encoding="UTF-8"?><error>Content-Type \'application/xml\' not supported</error>'
 
         common_query_params = [
             'bbox',
@@ -570,8 +586,11 @@ class API:
                 elif k == 'q':
                     query_args.append(build_anytext('anytext', v))
                 else:
-                    query_args.append(f'{k} = "{v}"')
+                    sec_args = ['key_challenge', 'key_challenge_method', 'access_token']
+                    if k not in sec_args: 
+                        query_args.append(f'{k} = "{v}"')
 
+        print(query_args)
         if collection != 'metadata:main' and not stac_item:
             LOGGER.debug('Adding virtual collection filter')
             query_args.append(f'parentidentifier = "{collection}"')
@@ -631,6 +650,7 @@ class API:
         else:
             query = self.repository.session.query(self.repository.dataset)
 
+        print(query)
         if 'sortby' in args:
             LOGGER.debug('sortby specified')
             sortby = args['sortby']
@@ -676,6 +696,13 @@ class API:
 
         for record in records:
             response['features'].append(record2json(record, stac_item))
+            if record.wkt_geometry:
+                minx, miny, maxx, maxy = wkt2geom(record.wkt_geometry)
+                if 'bbox' in response:
+                    bbox = response['bbox']
+                    response['bbox'] = [min(bbox[0],minx), min(bbox[1],miny), max(bbox[2],maxx), max(bbox[3],maxy)]
+                else:
+                    response['bbox'] = [minx, miny, maxx, maxy]
 
         LOGGER.debug('Creating links')
 
@@ -683,20 +710,43 @@ class API:
 
         link_args.pop('f', None)
 
+        sec_url_base = None
+        url_base = None
         if stac_item:
             fragment = 'search'
         else:
             fragment = f'collections/{collection}/items'
 
         if link_args:
+            sec_url_base = f"{self.config['server']['url']}/{fragment}?{urlencode(link_args)}"
+            for key in ['key_challenge', 'key_challenge_method', 'access_token']:
+                link_args.pop(key, None)
             url_base = f"{self.config['server']['url']}/{fragment}?{urlencode(link_args)}"
         else:
             url_base = f"{self.config['server']['url']}/{fragment}"
+            sec_url_base = url_base
 
+        print(headers_['Content-Type'])
         is_html = headers_['Content-Type'] == 'text/html'
+        is_dcs = headers_['Content-Type'] == 'application/dcs+geo'
+        is_jose = headers_['Content-Type'] == 'application/jose'
+        is_json = (headers_['Content-Type'] == 'application/json') or (headers_['Content-Type'] == 'application/geo+json')
 
-        response['links'].extend([{
-            'rel': 'self' if not is_html else 'alternate',
+        response['links'].extend([
+        {
+            'rel': 'self' if is_dcs else 'alternate',
+            'type': 'application/dcs+geo',
+            'title': 'This document as DCS + GeoJSON',
+            'href': f"{bind_url(sec_url_base)}f=dcs+geo",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_jose else 'alternate',
+            'type': 'application/jose',
+            'title': 'This document as JOSE + GeoJSON',
+            'href': f"{bind_url(sec_url_base)}f=jose",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_json else 'alternate',
             'type': 'application/geo+json',
             'title': 'This document as GeoJSON',
             'href': f"{bind_url(url_base)}f=json",
@@ -720,14 +770,31 @@ class API:
 
             prev = max(0, offset - limit)
 
-            url_ = f"{self.config['server']['url']}/{fragment}?{urlencode(link_args)}"
-
-            response['links'].append(
+            if is_dcs:
+                response['links'].append(
+                {
+                    'type': 'application/dcs+geo',
+                    'rel': 'prev',
+                    'title': 'items (prev)',
+                    'href': f"{bind_url(sec_url_base)}f=dcs+geo&offset={prev}",
+                    'hreflang': self.config['server']['language']
+                })
+            if is_jose:
+                response['links'].append(
+                {
+                    'type': 'application/jose',
+                    'rel': 'prev',
+                    'title': 'items (prev)',
+                    'href': f"{bind_url(sec_url_base)}f=jose&offset={prev}",
+                    'hreflang': self.config['server']['language']
+                })
+            if is_json:
+                response['links'].append(
                 {
                     'type': 'application/geo+json',
                     'rel': 'prev',
                     'title': 'items (prev)',
-                    'href': f"{bind_url(url_)}offset={prev}",
+                    'href': f"{bind_url(url_base)}offset={prev}",
                     'hreflang': self.config['server']['language']
                 })
 
@@ -736,15 +803,33 @@ class API:
 
             next_ = offset + returned
 
-            url_ = f"{self.config['server']['url']}/{fragment}?{urlencode(link_args)}"
-
-            response['links'].append({
-                'rel': 'next',
-                'type': 'application/geo+json',
-                'title': 'items (next)',
-                'href': f"{bind_url(url_)}offset={next_}",
-                'hreflang': self.config['server']['language']
-            })
+            if is_dcs:
+                response['links'].append(
+                {
+                    'rel': 'next',
+                    'type': 'application/dcs+geo',
+                    'title': 'items (next)',
+                    'href': f"{bind_url(sec_url_base)}f=dcs+geo&offset={next_}",
+                    'hreflang': self.config['server']['language']
+                })
+            if is_jose:
+                response['links'].append(
+                {
+                    'rel': 'next',
+                    'type': 'application/jose',
+                    'title': 'items (next)',
+                    'href': f"{bind_url(sec_url_base)}f=jose&offset={next_}",
+                    'hreflang': self.config['server']['language']
+                }) 
+            if is_json:
+                response['links'].append(
+                {
+                    'rel': 'next',
+                    'type': 'application/geo+json',
+                    'title': 'items (next)',
+                    'href': f"{bind_url(url_base)}offset={next_}",
+                    'hreflang': self.config['server']['language']
+                })
 
         if headers_['Content-Type'] == 'text/html':
             response['title'] = self.config['metadata:main']['identification_title']
@@ -783,11 +868,132 @@ class API:
 
         response = record2json(record, stac_item=stac_item)
 
+        LOGGER.debug('Creating links')
+
+        link_args = {**args}
+
+        link_args.pop('f', None)
+
+        sec_url_base = None
+        url_base = None
+        if stac_item:
+            fragment = 'search'
+        else:
+            fragment = f'collections/{collection}/items/{item}'
+
+        if link_args:
+            sec_url_base = f"{self.config['server']['url']}/{fragment}?{urlencode(link_args)}"
+            for key in ['key_challenge', 'key_challenge_method', 'access_token']:
+                link_args.pop(key, None)
+            url_base = f"{self.config['server']['url']}/{fragment}?{urlencode(link_args)}"
+        else:
+            url_base = f"{self.config['server']['url']}/{fragment}"
+            sec_url_base = url_base
+
+        print(headers_['Content-Type'])
+        is_html = headers_['Content-Type'] == 'text/html'
+        is_dcs = headers_['Content-Type'] == 'application/dcs+geo'
+        is_jose = headers_['Content-Type'] == 'application/jose'
+        is_json = (headers_['Content-Type'] == 'application/json') or (headers_['Content-Type'] == 'application/geo+json')
+
+        response['links'].extend([
+        {
+            'rel': 'self' if is_dcs else 'alternate',
+            'type': 'application/dcs+geo',
+            'title': 'This document as DCS + GeoJSON',
+            'href': f"{bind_url(sec_url_base)}f=dcs+geo",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_jose else 'alternate',
+            'type': 'application/jose',
+            'title': 'This document as JOSE + GeoJSON',
+            'href': f"{bind_url(sec_url_base)}f=jose",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_json else 'alternate',
+            'type': 'application/geo+json',
+            'title': 'This document as GeoJSON',
+            'href': f"{bind_url(url_base)}f=json",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_html else 'alternate',
+            'type': 'text/html',
+            'title': 'This document as HTML',
+            'href': f"{bind_url(url_base)}f=html",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'collection',
+            'type': 'application/json',
+            'title': 'Collection URL',
+            'href': f"{self.config['server']['url']}/collections/{collection}",
+            'hreflang': self.config['server']['language']
+        }])
         if headers_['Content-Type'] == 'text/html':
             response['title'] = self.config['metadata:main']['identification_title']
             response['collection'] = collection
 
         return self.get_response(200, headers_, 'item.html', response)
+
+    
+    def item_post(self, headers_, record, collection):
+        ''' Handle Transaction request '''
+
+
+        #record = '{"id": "urn:uuid:19887a8a-f6b0-4a63-ae56-7fba0e17801f", "type": "Feature", "geometry": null, "properties": {"externalId": "urn:uuid:19887a8a-f6b0-4a63-ae56-7fba0e17801f", "datetime": null, "start_datetime": null, "end_datetime": null, "recordUpdated": "2022-05-06T08:21:33Z", "type": "http://purl.org/dc/dcmitype/Image", "title": "Lorem ipsum", "description": "Quisque lacus diam, placerat mollis, pharetra in, commodo sed, augue. Duis iaculis arcu vel arcu.", "formats": ["image/svg+xml"], "keywords": ["Tourism--Greece"]}, "links": [], "assets": {}}'
+        LOGGER.debug('POST record: %s', record)
+
+        # insert new record
+        try:
+            record = metadata.parse_record(self.context, record, self.repository)[0]
+            identifier = getattr(record,
+            self.context.md_core_model['mappings']['pycsw:Identifier'])
+            print("identifier: {}", identifier )
+            data = self.repository.query_ids([record.identifier])
+            if data:
+                headers_['Location'] = '/collections/' + collection + '/items/' + record.identifier
+                headers_['Content-Type'] = 'application/json'
+                return self.get_response(201, headers_, None, json.loads('{}'))
+
+            self.repository.insert(record, 'local', util.get_today_and_now())
+
+        except Exception as err:
+            return self.get_exception(
+                    400, headers_, 'InvalidParameterValue', err)
+
+        headers_['Location'] = '/collections/' + collection + '/items/' + record.identifier
+        headers_['Content-Type'] = 'application/json'
+
+        return self.get_response(201, headers_, None, '{}')
+
+    def item_put(self, headers_, record, collection, item):
+        ''' Handle Transaction request '''
+
+
+        #record = '{"id": "urn:uuid:19887a8a-f6b0-4a63-ae56-7fba0e17801f", "type": "Feature", "geometry": null, "properties": {"externalId": "urn:uuid:19887a8a-f6b0-4a63-ae56-7fba0e17801f", "datetime": null, "start_datetime": null, "end_datetime": null, "recordUpdated": "2022-05-06T08:21:33Z", "type": "http://purl.org/dc/dcmitype/Image", "title": "Lorem ipsum", "description": "Quisque lacus diam, placerat mollis, pharetra in, commodo sed, augue. Duis iaculis arcu vel arcu.", "formats": ["image/svg+xml"], "keywords": ["Tourism--Greece"]}, "links": [], "assets": {}}'
+        LOGGER.debug('POST record: %s', record)
+
+        # insert new record
+        try:
+            record = metadata.parse_record(self.context, record, self.repository)[0]
+            setattr(record,
+            self.context.md_core_model['mappings']['pycsw:Identifier'], item)
+            data = self.repository.query_ids([item])
+            if data:
+                headers_['Location'] = '/collections/' + collection + '/items/' + item
+                headers_['Content-Type'] = 'application/json'
+                return self.get_response(201, headers_, None, json.loads('{}'))
+
+            self.repository.insert(record, 'local', util.get_today_and_now())
+
+        except Exception as err:
+            return self.get_exception(
+                    400, headers_, 'InvalidParameterValue', err)
+
+        headers_['Location'] = '/collections/' + collection + '/items/' + item
+        headers_['Content-Type'] = 'application/json'
+
+        return self.get_response(201, headers_, None, '{}')
+ 
 
     def get_exception(self, status, headers, code, description):
         """
