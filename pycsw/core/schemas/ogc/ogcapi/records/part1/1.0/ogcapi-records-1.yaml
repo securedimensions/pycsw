@@ -11,16 +11,22 @@ info:
     To obtain additional rights of use, visit
     http://www.opengeospatial.org/legal/ .
 
-    This document is also available on
-    [OGC](http://schemas.opengis.net/ogcapi/records/part1/1.0/openapi/ogcapi-records-1.yaml).
+    NOTE: THIS DOCUMENT IS A TESTBED 18 MODIFICATION THAT INCLUDES DATA CENTRIC SECURITY SPECIFICS.
+    
+    This document also available on
+    [OGC Gitlab](https://gitlab.ogc.org/ogc/T18-Secure_Asynchronous_Catalogs/-/issues/13).
   version: '1.0.0'
   contact:
-    name: Panagiotis (Peter) A. Vretanos
-    email: pvretano@pvretano.com
+    name: Andreas Matheus
+    email: am@secure-dimensions.de
   license:
     name: OGC License
     url: 'http://www.opengeospatial.org/legal/'
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
   parameters:
     bbox:
       name: bbox
@@ -930,3 +936,14 @@ components:
         text/html:
           schema:
             type: string
+    TokenError:
+      description: |-
+        The Bearer Access Token is either missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/exception'
+        text/html:
+          schema:
+            type: string
+
