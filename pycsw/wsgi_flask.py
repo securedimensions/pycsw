@@ -34,7 +34,7 @@ import os
 from pathlib import Path 
 import sys
 
-from flask import Flask, Blueprint, make_response, request, Response, send_file
+from flask import Flask, Blueprint, make_response, request, Response, send_file, jsonify
 
 from pycsw.core.util import parse_ini_config
 from pycsw.ogc.api.records import API
@@ -94,8 +94,13 @@ def check_access_token(token):
     return json.loads(tokeninfo.content)
 
 def validate_access_token(token):
-    client = Client('127.0.0.1', serde=JsonSerde())
-    result = client.get(token)
+    try:
+        client = Client('127.0.0.1', serde=JsonSerde(), ignore_exc=False)
+        print(client)
+        result = client.get(token)
+    except Exception as e:
+        print(e)
+        False
     now = int(time.time())
 
     if result is None:
@@ -103,7 +108,7 @@ def validate_access_token(token):
         # from the canonical source:
         result = check_access_token(token)
         if not bool(result['active']):
-            return false
+            return False
     
         # Cache the result for next time:
         client.set(token, result, result['exp'] - now)
@@ -117,12 +122,21 @@ def token_required(f):
 
         accepts = ['application/dcs+geo', 'application/jose']
         fs = ['JWE', 'jwe', 'jose', 'dcs+geo']
+
         if ('f' in request.args):
             if (request.args['f'] not in fs):
                 if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
                     return f(None, *args, **kwargs)
         else:
-            if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
+            print(request.headers)
+            if ('Content-Type' in request.headers):
+                if (request.headers['Content-Type'] not in accepts):
+                    print("1")
+                    return f(None, *args, **kwargs)
+            else:
+                print("2")
+                if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
+                    print("3")
                     return f(None, *args, **kwargs)
 
         if 'Authorization' in request.headers:
@@ -162,10 +176,20 @@ def validate_qs_arguments():
                 if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
                         return f(None, None, None, *args, **kwargs)
 
-            if request.args.get('key_challenge') is None and request.args.get('public_keys') is None:
-                return {"code": "400", "description": "'key_challenge' or 'public_keys' parameter must be used"}, 400
+            if request.args.get('key_challenge') is None and request.args.get('public_keys') is None and request.args.get('public_key') is None:
+                return {"code": "400", "description": "'key_challenge' or 'public_keys' or 'public_key' parameter must be used"}, 400
 
-            # public_keys has precedence
+            # public_key has precedence
+            if request.args.get('public_key') is not None:
+                arg = request.args.get('public_key')
+                public_key = {}
+                items = iter(arg.split(","))
+                for item in items:
+                    public_key.update({item: next(items)})
+                
+                return f(None, None, [public_key], *args, **kwargs)
+
+            # public_keys is next
             if request.args.get('public_keys') is not None:
                 public_keys = request.args.get('public_keys')
                 public_keys = unquote(public_keys)
@@ -175,9 +199,9 @@ def validate_qs_arguments():
                 
                 return f(None, None, public_keys, *args, **kwargs)
 
-                
+            # then direct encryption with key_challenge                
             if request.args.get('key_challenge') is None:
-                return {"code": "400", "description": "'{name}' parameter is missing".format(name=argument_name)}, 400
+                return {"code": "400", "description": "'{name}' parameter is missing".format(name='key_challenge')}, 400
             else:
                 key_challenge = request.args.get('key_challenge')
             
@@ -189,6 +213,45 @@ def validate_qs_arguments():
             return f(key_challenge, key_challenge_method, None, *args, **kwargs)
         return update_wrapper(wrapped_function, f)
     return decorator
+
+def json2record(data):
+    record = json.loads(data)
+    id = record['id']
+    properties = record['properties']
+    type = properties['type']
+    abstract = properties['description']
+    if 'extent' in properties:
+        spatial = properties['extent']['spatial']
+        crs = spatial['crs']
+        bbox = spatial['bbox']
+        data = """<?xml version="1.0" encoding="UTF-8"?>
+        <csw:Record xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" 
+            xmlns:ows="http://www.opengis.net/ows" 
+            xmlns:dc="http://purl.org/dc/elements/1.1/" 
+            xmlns:dct="http://purl.org/dc/terms/">
+            <dc:identifier>{}</dc:identifier>
+            <dc:type>{}</dc:type>
+            <dct:abstract>{}</dct:abstract>
+           <ows:BoundingBox crs="{}">
+                <ows:LowerCorner>{} {}</ows:LowerCorner>
+                <ows:UpperCorner>{} {}</ows:UpperCorner>
+            </ows:BoundingBox>
+        </csw:Record>
+        """.format(id, type, abstract, crs, bbox[0][0], bbox[0][1], bbox[0][2], bbox[0][3])
+    else:
+        data = """<?xml version="1.0" encoding="UTF-8"?>
+        <csw:Record xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" 
+            xmlns:ows="http://www.opengis.net/ows" 
+            xmlns:dc="http://purl.org/dc/elements/1.1/" 
+            xmlns:dct="http://purl.org/dc/terms/">
+            <dc:identifier>{}</dc:identifier>
+            <dc:type>{}</dc:type>
+            <dct:abstract>{}</dct:abstract>
+        </csw:Record>
+        """.format(id, type, abstract)
+        
+    return data.encode('utf-8')
+     
 
 def get_response(result: tuple):
     """
@@ -230,9 +293,9 @@ def create_key(token, key_challenge, key_challenge_method):
     key_data['expires'] = expires
     #key_data['audience'] = '019b7173-a9ed-7d9a-70d3-9502ad7c0575'
     key_data['aud'] = token_info['client_id']
-    key_data['issuer'] = 'DCS Records API'
+    key_data['issuer'] = 'https://ogc.demo.secure-dimensions.de/pycsw'
     
-    key_url = 'https://ogc.secure-dimensions.com/kms/dek'
+    key_url = 'https://ogc.demo.secure-dimensions.de/kms/dek'
     header = {'Authorization': "Bearer {}".format(token), 'Content-Type': 'application/x-www-form-urlencoded'}
     #key_info = requests.post(key_url, data=key_data, headers=header)
     #registered_key = json.loads(key_info.content)
@@ -537,8 +600,28 @@ def item_post(token, collection):
     if 'stac' in request.url_rule.rule:
         stac_item = True
 
-    return get_response(api_.item_post(dict(request.headers), request.data,
-                    collection))
+    if 'Content-Type' in request.headers:
+        content_type = request.headers['Content-Type']
+        if content_type == 'application/json':
+            data = json2record(request.data)
+        elif content_type == 'application/jose':
+            header = '{}=='.format(data.decode('utf-8').split('.')[0])
+            header = base64.b64decode(header)
+            header = json.loads(header)
+            if header['alg'] != 'dir':
+                try:
+                    private_key = Path('../keys/pycsw-enc.key').read_text()
+                    token = jwe.decrypt(data, private_key)
+                    data = json2record(token)
+                except Exception as e:
+                    return make_response(jsonify({'error': str(e)}), 400)
+            else:
+                return make_response(jsonify({'error': 'dir encryted JWEs are not yet supported'}), 400)
+        else:
+            data = request.data
+        
+    result = api_.item_post(dict(request.headers), data, collection)
+    return get_response(result)
 
 
 @BLUEPRINT.route('/collections/<collection>/items/<item>', methods=['PUT'])
@@ -558,8 +641,22 @@ def item_put(token, collection, item):
     if 'stac' in request.url_rule.rule:
         stac_item = True
             
-    return get_response(api_.item_put(dict(request.headers), request.data,
-                    collection, item))
+    if 'Content-Type' in request.headers:
+        content_type = request.headers['Content-Type']
+        if content_type == 'application/json':
+            data = json2record(request.data)
+        elif content_type == 'application/jose':
+            try:
+                private_key = Path('../keys/pycsw-enc.key').read_text()
+                token = jwe.decrypt(request.data, private_key)
+                data = json2record(token)
+            except Exception as e:
+                return make_response(jsonify({'error': str(e)}), 400)
+        else:
+            data = request.data
+        
+    result = api_.item_put(dict(request.headers), data, collection, item)
+    return get_response(result)
 
 
 
@@ -620,7 +717,12 @@ def sru():
 
 @BLUEPRINT.route('/.well-known/jwks.json', methods=['GET'])
 def jwks():
-    return send_file('/opt/pycsw.tb18/pycsw/jwks.json', mimetype='application/json')
+    jwks_file = APP.config['PYCSW_CONFIG']['jwks'].get('jwks_file', True)
+    print(jwks_file)
+    if Path(jwks_file).is_file():
+        return send_file(jwks_file, mimetype='application/json')
+    else:
+        return {"code": "500", "description": "JWKS file not found"}, 500
 
 @BLUEPRINT.after_request
 def after_request(response):
@@ -634,7 +736,7 @@ def after_request(response):
 APP.register_blueprint(BLUEPRINT)
 
 if __name__ == '__main__':
-    port = 9000
+    port = 9090
     if len(sys.argv) > 1:
         port = int(sys.argv[1])
     print(f'Serving on port {port}')
