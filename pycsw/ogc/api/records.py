@@ -559,7 +559,7 @@ class API:
 
             LOGGER.debug(f'Transformed args: {args}')
 
-        if 'filter' in args:
+        if 'filter' in args and args['filter']:
             LOGGER.debug(f'CQL query specified {args["filter"]}')
             cql_query = args['filter']
 
