@@ -59,6 +59,7 @@ APP.url_map.strict_slashes = False
 APP.config['PYCSW_CONFIG'] = parse_ini_config(Path(os.getenv('PYCSW_CONFIG')))
 APP.config['JSONIFY_PRETTYPRINT_REGULAR'] = APP.config['PYCSW_CONFIG']['server'].get(
     'pretty_print', True)
+APP.config['PREFERRED_URL_SCHEME'] = 'https'
 
 
 BLUEPRINT = Blueprint('pycsw', __name__, static_folder=STATIC,
@@ -123,21 +124,22 @@ def token_required(f):
         accepts = ['application/dcs+geo', 'application/jose']
         fs = ['JWE', 'jwe', 'jose', 'dcs+geo']
 
-        if ('f' in request.args):
-            if (request.args['f'] not in fs):
-                if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
-                    return f(None, *args, **kwargs)
-        else:
-            print(request.headers)
-            if ('Content-Type' in request.headers):
-                if (request.headers['Content-Type'] not in accepts):
-                    print("1")
-                    return f(None, *args, **kwargs)
+        if 'Prefer' not in request.headers:
+            if ('f' in request.args):
+                if (request.args['f'] not in fs):
+                    if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
+                        return f(None, *args, **kwargs)
             else:
-                print("2")
-                if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
-                    print("3")
-                    return f(None, *args, **kwargs)
+                print(request.headers)
+                if ('Content-Type' in request.headers):
+                    if (request.headers['Content-Type'] not in accepts):
+                        print("1")
+                        return f(None, *args, **kwargs)
+                else:
+                    print("2")
+                    if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
+                        print("3")
+                        return f(None, *args, **kwargs)
 
         if 'Authorization' in request.headers:
                 auth_header = request.headers['Authorization']
@@ -563,6 +565,35 @@ def item(token, key_challenge, key_challenge_method, public_keys, collection='me
         if 'stac' in request.url_rule.rule:
             stac_item = True
 
+        if 'Prefer' in request.headers:
+            prefer = request.headers['Prefer']
+            print(prefer)
+            prefer = prefer.split(';')
+            if 'respond-async' in prefer:
+                for term in prefer:
+                    pref = term.strip()
+                    print("term: " + term)
+                    kvp = term.split('=')
+                    if len(kvp) == 2:
+                        subscription_uri = unquote(kvp[1])
+                        # could not figure out how to get flask to use the HTTP_X_FORWARDED_PROTO
+                        resources_uri = request.url.replace('http://','https://')
+                        print("resources-uri: " + resources_uri)
+                        print("subscription: " + subscription_uri)
+
+                        res = requests.patch(subscription_uri, json={'resources-uri': resources_uri}, headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+                        print("response patch")
+                        print(res)
+                        if res.status_code == 204:
+                            res = requests.patch(subscription_uri, json={'state': 'start'}, headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+                            print("response patch status")
+                            print(res)
+                            if res.status_code == 204:
+                                return Response(None, status=202, headers={'Preference-Applied': 'subscription=' + subscription_uri})
+                            else:
+                                print(res.content)
+                
+
         feature = api_.item(dict(request.headers), request.args, collection, item, stac_item)
         if ('f' in request.args):
             if (request.args['f'] == 'dcs+geo'):
@@ -736,7 +767,7 @@ def after_request(response):
 APP.register_blueprint(BLUEPRINT)
 
 if __name__ == '__main__':
-    port = 9090
+    port = 9000
     if len(sys.argv) > 1:
         port = int(sys.argv[1])
     print(f'Serving on port {port}')
