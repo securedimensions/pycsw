@@ -636,6 +636,7 @@ def item_post(token, collection):
         if content_type == 'application/json':
             data = json2record(request.data)
         elif content_type == 'application/jose':
+            data = request.data
             header = '{}=='.format(data.decode('utf-8').split('.')[0])
             header = base64.b64decode(header)
             header = json.loads(header)
@@ -643,7 +644,13 @@ def item_post(token, collection):
                 try:
                     private_key = Path('../keys/pycsw-enc.key').read_text()
                     token = jwe.decrypt(data, private_key)
-                    data = json2record(token)
+                    print(header['cty'])
+                    if header['cty'] == 'xml':
+                        data = token
+                    else:
+                        data = json2record(token)
+
+                    print(data)
                 except Exception as e:
                     return make_response(jsonify({'error': str(e)}), 400)
             else:
