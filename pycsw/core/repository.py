@@ -444,6 +444,7 @@ class Repository(object):
             self.session.begin()
             rows = self._get_repo_filter(self.session.query(self.dataset)).filter(
             text(constraint['where'])).params(self._create_values(constraint['values']))
+            LOGGER.debug(rows)
 
             parentids = []
             for row in rows:  # get ids

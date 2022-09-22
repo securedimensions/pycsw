@@ -456,7 +456,7 @@ def gen_oapi(config, oapi_filepath):
         'put': {
             'tags': ['Data'],
             'summary': 'Publish a Record item page',
-            'description': 'Publish a Record item',
+            'description': 'Publish a new Record or (full) replace an existing item',
             'operationId': 'putRecord',
             'security': [{'BearerAuth': ["ogc"]}],
             'parameters': [
@@ -505,6 +505,31 @@ def gen_oapi(config, oapi_filepath):
                 },
                 '401': {
                      'description': 'Authorization information is missing or invalid.'
+                },
+                '500': {
+                    '$ref': '#/components/responses/ServerError'
+                }
+            }
+        },
+        'delete': {
+            'tags': ['Data'],
+            'summary': 'Delete record',
+            'description': 'Delete a Record item',
+            'operationId': 'deleteRecord',
+            'security': [{'BearerAuth': ["ogc"]}],
+            'parameters': [
+                {'$ref': '#/components/parameters/collectionId'},
+                {'$ref': '#/components/parameters/recordId'},
+            ],
+            'responses': {
+                '204': {
+                    'description': 'OK'
+                },
+                '401': {
+                    'description': 'Authorization information is missing or invalid.'
+                },
+                '404': {
+                    '$ref': '#/components/responses/NotFound'
                 },
                 '500': {
                     '$ref': '#/components/responses/ServerError'

@@ -970,7 +970,7 @@ class API:
 
 
         #record = '{"id": "urn:uuid:19887a8a-f6b0-4a63-ae56-7fba0e17801f", "type": "Feature", "geometry": null, "properties": {"externalId": "urn:uuid:19887a8a-f6b0-4a63-ae56-7fba0e17801f", "datetime": null, "start_datetime": null, "end_datetime": null, "recordUpdated": "2022-05-06T08:21:33Z", "type": "http://purl.org/dc/dcmitype/Image", "title": "Lorem ipsum", "description": "Quisque lacus diam, placerat mollis, pharetra in, commodo sed, augue. Duis iaculis arcu vel arcu.", "formats": ["image/svg+xml"], "keywords": ["Tourism--Greece"]}, "links": [], "assets": {}}'
-        LOGGER.debug('POST record: %s', record)
+        LOGGER.debug('PUT record: %s', record)
 
         # insert new record
         try:
@@ -979,9 +979,11 @@ class API:
             self.context.md_core_model['mappings']['pycsw:Identifier'], item)
             data = self.repository.query_ids([item])
             if data:
-                headers_['Location'] = '/collections/' + collection + '/items/' + item
-                headers_['Content-Type'] = 'application/json'
-                return self.get_response(201, headers_, None, json.loads('{}'))
+                #headers_['Location'] = '/collections/' + collection + '/items/' + item
+                #headers_['Content-Type'] = 'application/json'
+                #return self.get_response(201, headers_, None, json.loads('{}'))
+                constraints = {'where': """identifier='{}'""".format(item), 'values': item}
+                self.repository.delete(constraints)
 
             self.repository.insert(record, 'local', util.get_today_and_now())
 
@@ -994,6 +996,19 @@ class API:
 
         return self.get_response(201, headers_, None, '{}')
  
+    def item_delete(self, headers_, item):
+        LOGGER.debug('DELETE record: %s', item)
+
+        # delete record
+        try:
+            constraints = {'where': """identifier='{}'""".format(item), 'values': item}
+            LOGGER.debug(constraints)
+            self.repository.delete(constraints)
+        except Exception as err:
+            return self.get_exception(
+                    500, headers_, 'InvalidParameterValue', err)
+
+        return headers_, 204, None
 
     def get_exception(self, status, headers, code, description):
         """

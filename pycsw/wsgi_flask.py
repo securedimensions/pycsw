@@ -54,6 +54,9 @@ import uuid
 from urllib.parse import unquote
 
 
+import logging
+LOGGER = logging.getLogger(__name__)
+
 APP = Flask(__name__, static_folder=STATIC, static_url_path='/static')
 APP.url_map.strict_slashes = False
 APP.config['PYCSW_CONFIG'] = parse_ini_config(Path(os.getenv('PYCSW_CONFIG')))
@@ -567,31 +570,35 @@ def item(token, key_challenge, key_challenge_method, public_keys, collection='me
 
         if 'Prefer' in request.headers:
             prefer = request.headers['Prefer']
-            print(prefer)
+            LOGGER.debug(prefer)
             prefer = prefer.split(';')
             if 'respond-async' in prefer:
                 for term in prefer:
                     pref = term.strip()
-                    print("term: " + term)
+                    LOGGER.debug("term: " + term)
                     kvp = term.split('=')
                     if len(kvp) == 2:
                         subscription_uri = unquote(kvp[1])
                         # could not figure out how to get flask to use the HTTP_X_FORWARDED_PROTO
-                        resources_uri = request.url.replace('http://','https://')
-                        print("resources-uri: " + resources_uri)
-                        print("subscription: " + subscription_uri)
+                        base_url = APP.config['PYCSW_CONFIG']['server'].get('url', True)
+                        resources_uri = base_url + request.path
+                        if request.query_string:
+                            resources_uri = resources_uri + '?' + request.query_string.decode('utf-8')
+                        LOGGER.debug("resources-uri: " + resources_uri)
+                        LOGGER.debug("subscription: " + subscription_uri)
 
                         res = requests.patch(subscription_uri, json={'resources-uri': resources_uri}, headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
-                        print("response patch")
-                        print(res)
+                        LOGGER.debug("response patch")
+                        LOGGER.debug(res)
+                        LOGGER.debug(res.content)
                         if res.status_code == 204:
                             res = requests.patch(subscription_uri, json={'state': 'start'}, headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
-                            print("response patch status")
-                            print(res)
+                            LOGGER.debug("response patch status")
+                            LOGGER.debug(res)
                             if res.status_code == 204:
-                                return Response(None, status=202, headers={'Preference-Applied': 'subscription=' + subscription_uri})
+                                return Response(None, status=202, headers={'Preference-Applied': 'subscription='})
                             else:
-                                print(res.content)
+                                LOGGER.debug(res.content)
                 
 
         feature = api_.item(dict(request.headers), request.args, collection, item, stac_item)
@@ -696,6 +703,11 @@ def item_put(token, collection, item):
     result = api_.item_put(dict(request.headers), data, collection, item)
     return get_response(result)
 
+@BLUEPRINT.route('/collections/<collection>/items/<item>', methods=['DELETE'])
+@token_required
+def item_delete(token, collection, item):
+    result = api_.item_delete(dict(request.headers), item)
+    return Response(None, status=204)
 
 
 @BLUEPRINT.route('/csw', methods=['GET', 'POST'])
