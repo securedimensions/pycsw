@@ -46,16 +46,13 @@ from functools import wraps, update_wrapper
 import json, time, requests, base64, re
 
 from Crypto.Random import get_random_bytes
-from jose import jwe, jwk
+from jose import jwe, jwk, jws, constants
+from jose.constants import ALGORITHMS
 from jose.utils import base64url_encode, base64url_decode
 from datetime import datetime, timedelta
 import time
 import uuid
 from urllib.parse import unquote
-
-
-import logging
-LOGGER = logging.getLogger(__name__)
 
 APP = Flask(__name__, static_folder=STATIC, static_url_path='/static')
 APP.url_map.strict_slashes = False
@@ -419,6 +416,46 @@ def get_jwe_response(result: tuple, token, key_challenge, key_challenge_method, 
     print(encrypted_content)
     return encrypted_content, 200, {'Content-Type': 'application/jose'}
 
+def get_jws_response(result: tuple):
+    """
+    Creates a Flask Response object and updates matching headers.
+
+    :param result:  The result of the API call.
+                    This should be a tuple of (headers, status, content).
+    :returns:       A Response instance.
+    """
+
+    headers, status, content = result
+
+    """
+    Sign the response using JWS
+    """
+    private_key_file = APP.config['PYCSW_CONFIG']['jwks'].get('private_key_file', True)
+    with open(private_key_file, "rb") as pemfile: 
+        private_key = jwk.construct(pemfile.read(),"RS256")
+        print(private_key)
+
+        public_key = jwk.get_key('RS256').public_key(private_key).to_dict()
+        public_key['kid'] = 'catalog-sign-key'
+        print(public_key)
+
+        header = {
+            "iss": "https://ogc.demo.secure-dimensions.de",
+            "alg": "RS256",
+            "kid": "catalog-sign-key",
+            "cty": "geo+json",
+            "jwk": public_key,
+            "jku": "https://ogc.demo.secure-dimensions.de/.well-known/jwks.json"
+        }
+
+        print(content)
+        signed_content = jws.sign(content.encode('utf-8'), private_key, headers=header, algorithm=ALGORITHMS.RS256)
+
+        print(signed_content)
+        return signed_content, 200, {'Content-Type': 'application/jose'}
+
+    return {"code": "500", "description": "signature file not found"}, 500
+
 
 @BLUEPRINT.route('/')
 def landing_page():
@@ -538,10 +575,15 @@ def items(token, key_challenge, key_challenge_method, private_keys, collection='
 
         if (request.args['f'] == 'JWE') or (request.args['f'] == 'jwe') or (request.args['f'] == 'jose'):
             return get_jwe_response(features, token, key_challenge, key_challenge_method, private_keys)
+
+        if (request.args['f'] == 'JWS') or (request.args['f'] == 'jws'):
+            return get_jws_response(features)
     else:
         if ('Accept' in request.headers):
             if ('application/dcs+geo' == request.headers['Accept']):
                 return get_dcs_response(features, token, key_challenge, key_challenge_method, private_keys)
+            if ('application/jose;profile=jws' == request.headers['Accept']):
+                return get_jws_response(features)
             if ('application/jose' == request.headers['Accept']):
                 return get_jwe_response(features, token, key_challenge, key_challenge_method, private_keys)
 
@@ -570,35 +612,31 @@ def item(token, key_challenge, key_challenge_method, public_keys, collection='me
 
         if 'Prefer' in request.headers:
             prefer = request.headers['Prefer']
-            LOGGER.debug(prefer)
+            print(prefer)
             prefer = prefer.split(';')
             if 'respond-async' in prefer:
                 for term in prefer:
                     pref = term.strip()
-                    LOGGER.debug("term: " + term)
+                    print("term: " + term)
                     kvp = term.split('=')
                     if len(kvp) == 2:
                         subscription_uri = unquote(kvp[1])
                         # could not figure out how to get flask to use the HTTP_X_FORWARDED_PROTO
-                        base_url = APP.config['PYCSW_CONFIG']['server'].get('url', True)
-                        resources_uri = base_url + request.path
-                        if request.query_string:
-                            resources_uri = resources_uri + '?' + request.query_string.decode('utf-8')
-                        LOGGER.debug("resources-uri: " + resources_uri)
-                        LOGGER.debug("subscription: " + subscription_uri)
+                        resources_uri = request.url.replace('http://','https://')
+                        print("resources-uri: " + resources_uri)
+                        print("subscription: " + subscription_uri)
 
                         res = requests.patch(subscription_uri, json={'resources-uri': resources_uri}, headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
-                        LOGGER.debug("response patch")
-                        LOGGER.debug(res)
-                        LOGGER.debug(res.content)
+                        print("response patch")
+                        print(res)
                         if res.status_code == 204:
                             res = requests.patch(subscription_uri, json={'state': 'start'}, headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
-                            LOGGER.debug("response patch status")
-                            LOGGER.debug(res)
+                            print("response patch status")
+                            print(res)
                             if res.status_code == 204:
-                                return Response(None, status=202, headers={'Preference-Applied': 'subscription='})
+                                return Response(None, status=202, headers={'Preference-Applied': 'subscription=' + subscription_uri})
                             else:
-                                LOGGER.debug(res.content)
+                                print(res.content)
                 
 
         feature = api_.item(dict(request.headers), request.args, collection, item, stac_item)
@@ -608,10 +646,15 @@ def item(token, key_challenge, key_challenge_method, public_keys, collection='me
             
             if (request.args['f'] == 'JWE') or (request.args['f'] == 'jwe') or (request.args['f'] == 'jose'):
                 return get_jwe_response(feature, token, key_challenge, key_challenge_method, public_keys)
+
+            if (request.args['f'] == 'JWS') or (request.args['f'] == 'jws'):
+                return get_jws_response(feature)
         else:
             if ('Accept' in request.headers):
                 if ('application/dcs+geo' == request.headers['Accept']):
                     return get_dcs_response(feature, token, key_challenge, key_challenge_method, public_keys)
+                if ('application/jose;profile=jws' == request.headers['Accept']):
+                    return get_jws_response(feature)
                 if ('application/jose' == request.headers['Accept']):
                     return get_jwe_response(feature, token, key_challenge, key_challenge_method, public_keys)
 
@@ -637,6 +680,8 @@ def item_post(token, collection):
 
     if 'stac' in request.url_rule.rule:
         stac_item = True
+
+    print(request.data)
 
     if 'Content-Type' in request.headers:
         content_type = request.headers['Content-Type']
@@ -703,11 +748,6 @@ def item_put(token, collection, item):
     result = api_.item_put(dict(request.headers), data, collection, item)
     return get_response(result)
 
-@BLUEPRINT.route('/collections/<collection>/items/<item>', methods=['DELETE'])
-@token_required
-def item_delete(token, collection, item):
-    result = api_.item_delete(dict(request.headers), item)
-    return Response(None, status=204)
 
 
 @BLUEPRINT.route('/csw', methods=['GET', 'POST'])
