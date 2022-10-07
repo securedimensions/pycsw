@@ -178,6 +178,8 @@ class API:
                 content_type = 'application/xml'
             elif 'application/dcs+geo' in headers['Accept']:
                 content_type = 'application/dcs+geo'
+            elif 'application/jose;profile=jws' in headers['Accept']:
+                content_type = 'application/jose;profile=jws'
             elif 'application/jose' in headers['Accept']:
                 content_type = 'application/jose'
 
@@ -191,7 +193,9 @@ class API:
                 content_type = 'text/html'
             elif format_ == 'dcs+geo':
                 content_type = 'application/dcs+geo'
-            elif format_ == 'jose':
+            elif (format_ == 'jws'):
+                content_type = 'application/jose;profile=jws'
+            elif (format_ == 'jose'):
                 content_type = 'application/jose'
 
         print("content_type: " + content_type)
@@ -694,16 +698,6 @@ class API:
         response['numberMatched'] = count
         response['numberReturned'] = returned
 
-        for record in records:
-            response['features'].append(record2json(record, stac_item))
-            if record.wkt_geometry:
-                minx, miny, maxx, maxy = wkt2geom(record.wkt_geometry)
-                if 'bbox' in response:
-                    bbox = response['bbox']
-                    response['bbox'] = [min(bbox[0],minx), min(bbox[1],miny), max(bbox[2],maxx), max(bbox[3],maxy)]
-                else:
-                    response['bbox'] = [minx, miny, maxx, maxy]
-
         LOGGER.debug('Creating links')
 
         link_args = {**args}
@@ -725,6 +719,30 @@ class API:
         else:
             url_base = f"{self.config['server']['url']}/{fragment}"
             sec_url_base = url_base
+
+        for record in records:
+            feature = record2json(record, stac_item)
+            feature_id = feature['id']
+            fragment = f'collections/{collection}/items/{feature_id}'
+            url_base = f"{self.config['server']['url']}/{fragment}?"
+            feature['links'].append(
+            {
+                'rel': 'via',
+                'type': 'application/xml',
+                'title': 'This document as XML',
+                'href': f"{bind_url(url_base)}f=xml",
+                'hreflang': self.config['server']['language']
+            })
+            response['features'].append(feature)
+            if record.wkt_geometry:
+                minx, miny, maxx, maxy = wkt2geom(record.wkt_geometry)
+                if 'bbox' in response:
+                    bbox = response['bbox']
+                    response['bbox'] = [min(bbox[0],minx), min(bbox[1],miny), max(bbox[2],maxx), max(bbox[3],maxy)]
+                else:
+                    response['bbox'] = [minx, miny, maxx, maxy]
+
+
 
         print(headers_['Content-Type'])
         is_html = headers_['Content-Type'] == 'text/html'
@@ -928,6 +946,17 @@ class API:
             'href': f"{self.config['server']['url']}/collections/{collection}",
             'hreflang': self.config['server']['language']
         }])
+
+        if is_json:
+            response['links'].extend([
+        {
+            'rel': 'via',
+            'type': 'application/xml',
+            'title': 'This document as XML',
+            'href': f"{bind_url(sec_url_base)}f=xml",
+            'hreflang': self.config['server']['language']
+        }])
+
         if headers_['Content-Type'] == 'text/html':
             response['title'] = self.config['metadata:main']['identification_title']
             response['collection'] = collection
