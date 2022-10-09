@@ -516,8 +516,8 @@ class API:
         headers_['Content-Type'] = self.get_content_type(headers_, args)
 
 
-        if headers_['Content-Type'] == 'application/xml':
-            return headers_, 400, '<?xml version="1.0" encoding="UTF-8"?><error>Content-Type \'application/xml\' not supported</error>'
+        #if headers_['Content-Type'] == 'application/xml':
+            #return headers_, 400, '<?xml version="1.0" encoding="UTF-8"?><error>Content-Type \'application/xml\' not supported</error>'
 
         common_query_params = [
             'bbox',
