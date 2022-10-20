@@ -748,6 +748,7 @@ class API:
         is_html = headers_['Content-Type'] == 'text/html'
         is_dcs = headers_['Content-Type'] == 'application/dcs+geo'
         is_jose = headers_['Content-Type'] == 'application/jose'
+        is_jws = headers_['Content-Type'] == 'application/jose;profile=jws'
         is_json = (headers_['Content-Type'] == 'application/json') or (headers_['Content-Type'] == 'application/geo+json')
 
         response['links'].extend([
@@ -762,6 +763,12 @@ class API:
             'type': 'application/jose',
             'title': 'This document as JOSE + GeoJSON',
             'href': f"{bind_url(sec_url_base)}f=jose",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_jws else 'alternate',
+            'type': 'application/jose;profile=jws',
+            'title': 'This document as JWS',
+            'href': f"{bind_url(sec_url_base)}f=jws",
             'hreflang': self.config['server']['language']
         }, {
             'rel': 'self' if is_json else 'alternate',
@@ -806,6 +813,15 @@ class API:
                     'href': f"{bind_url(sec_url_base)}f=jose&offset={prev}",
                     'hreflang': self.config['server']['language']
                 })
+            if is_jws:
+                response['links'].append(
+                {
+                    'type': 'application/jose;profile=jws',
+                    'rel': 'prev',
+                    'title': 'items (prev)',
+                    'href': f"{bind_url(sec_url_base)}f=jws&offset={prev}",
+                    'hreflang': self.config['server']['language']
+                })
             if is_json:
                 response['links'].append(
                 {
@@ -837,6 +853,15 @@ class API:
                     'type': 'application/jose',
                     'title': 'items (next)',
                     'href': f"{bind_url(sec_url_base)}f=jose&offset={next_}",
+                    'hreflang': self.config['server']['language']
+                }) 
+            if is_jws:
+                response['links'].append(
+                {
+                    'rel': 'next',
+                    'type': 'application/jose;profile=jws',
+                    'title': 'items (next)',
+                    'href': f"{bind_url(sec_url_base)}f=jws&offset={next_}",
                     'hreflang': self.config['server']['language']
                 }) 
             if is_json:
@@ -912,6 +937,7 @@ class API:
         is_html = headers_['Content-Type'] == 'text/html'
         is_dcs = headers_['Content-Type'] == 'application/dcs+geo'
         is_jose = headers_['Content-Type'] == 'application/jose'
+        is_jws = headers_['Content-Type'] == 'application/jose;profile=jws'
         is_json = (headers_['Content-Type'] == 'application/json') or (headers_['Content-Type'] == 'application/geo+json')
 
         response['links'].extend([
@@ -926,6 +952,12 @@ class API:
             'type': 'application/jose',
             'title': 'This document as JOSE + GeoJSON',
             'href': f"{bind_url(sec_url_base)}f=jose",
+            'hreflang': self.config['server']['language']
+        }, {
+            'rel': 'self' if is_jws else 'alternate',
+            'type': 'application/jose;profile=jws',
+            'title': 'This document as JWS',
+            'href': f"{bind_url(url_base)}f=jws",
             'hreflang': self.config['server']['language']
         }, {
             'rel': 'self' if is_json else 'alternate',
@@ -979,7 +1011,7 @@ class API:
             print("identifier: {}", identifier )
             data = self.repository.query_ids([record.identifier])
             if data:
-                headers_['Location'] = '/collections/' + collection + '/items/' + record.identifier
+                headers_['Location'] = self.config['server']['url'] + '/collections/' + collection + '/items/' + record.identifier
                 headers_['Content-Type'] = 'application/json'
                 return self.get_response(201, headers_, None, json.loads('{}'))
 
@@ -989,7 +1021,7 @@ class API:
             return self.get_exception(
                     400, headers_, 'InvalidParameterValue', err)
 
-        headers_['Location'] = '/collections/' + collection + '/items/' + record.identifier
+        headers_['Location'] = self.config['server']['url'] + '/collections/' + collection + '/items/' + record.identifier
         headers_['Content-Type'] = 'application/json'
 
         return self.get_response(201, headers_, None, '{}')

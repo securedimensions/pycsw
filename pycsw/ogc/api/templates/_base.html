@@ -43,12 +43,13 @@
 
           {% for link in data['links'] %}
             {% if link['rel'] == 'alternate' and link['type'] and link['type'] in ['application/dcs+geo'] %}
-              {% set links_found.json = 1 %}
               <a href="{{ link['href'] }}">DCS+GEO</a>
             {% endif %}
             {% if link['rel'] == 'alternate' and link['type'] and link['type'] in ['application/jose'] %}
-              {% set links_found.json = 1 %}
               <a href="{{ link['href'] }}">JOSE</a>
+            {% endif %}
+            {% if link['rel'] == 'alternate' and link['type'] and link['type'] in ['application/jose;profile=jws'] %}
+              <a href="{{ link['href'] }}">JWS</a>
             {% endif %}
             {% if link['rel'] == 'alternate' and link['type'] and link['type'] in ['application/json', 'application/geo+json'] %}
               {% set links_found.json = 1 %}
