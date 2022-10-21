@@ -338,7 +338,7 @@ def get_dcs_response(result: tuple, token, key_challenge, key_challenge_method, 
     else:       
         key_data = create_key(token, key_challenge, key_challenge_method)
         key_secret = base64url_decode(key_data['k'])
-        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='application/geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': 'kurl'}).decode('utf-8')
+        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='application/geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
 
     print(content)
     content_dict = json.loads(content)
@@ -410,7 +410,7 @@ def get_jwe_response(result: tuple, token, key_challenge, key_challenge_method, 
     else:       
         key_data = create_key(token, key_challenge, key_challenge_method)
         key_secret = base64url_decode(key_data['k'])
-        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='application/geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': 'kurl'}).decode('utf-8')
+        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='application/geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
 
     #clear_text = jwe.decrypt(encrypted_content,urlsafe_b64decode(key_data['k'] + b"=="))
 
