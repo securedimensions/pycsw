@@ -746,31 +746,10 @@ class API:
 
         print(headers_['Content-Type'])
         is_html = headers_['Content-Type'] == 'text/html'
-        is_dcs = headers_['Content-Type'] == 'application/dcs+geo'
-        is_jose = headers_['Content-Type'] == 'application/jose'
-        is_jws = headers_['Content-Type'] == 'application/jose;profile=jws'
         is_json = (headers_['Content-Type'] == 'application/json') or (headers_['Content-Type'] == 'application/geo+json')
 
         response['links'].extend([
         {
-            'rel': 'self' if is_dcs else 'alternate',
-            'type': 'application/dcs+geo',
-            'title': 'This document as DCS + GeoJSON',
-            'href': f"{bind_url(sec_url_base)}f=dcs+geo",
-            'hreflang': self.config['server']['language']
-        }, {
-            'rel': 'self' if is_jose else 'alternate',
-            'type': 'application/jose',
-            'title': 'This document as JOSE + GeoJSON',
-            'href': f"{bind_url(sec_url_base)}f=jose",
-            'hreflang': self.config['server']['language']
-        }, {
-            'rel': 'self' if is_jws else 'alternate',
-            'type': 'application/jose;profile=jws',
-            'title': 'This document as JWS',
-            'href': f"{bind_url(sec_url_base)}f=jws",
-            'hreflang': self.config['server']['language']
-        }, {
             'rel': 'self' if is_json else 'alternate',
             'type': 'application/geo+json',
             'title': 'This document as GeoJSON',
@@ -795,33 +774,6 @@ class API:
 
             prev = max(0, offset - limit)
 
-            if is_dcs:
-                response['links'].append(
-                {
-                    'type': 'application/dcs+geo',
-                    'rel': 'prev',
-                    'title': 'items (prev)',
-                    'href': f"{bind_url(sec_url_base)}f=dcs+geo&offset={prev}",
-                    'hreflang': self.config['server']['language']
-                })
-            if is_jose:
-                response['links'].append(
-                {
-                    'type': 'application/jose',
-                    'rel': 'prev',
-                    'title': 'items (prev)',
-                    'href': f"{bind_url(sec_url_base)}f=jose&offset={prev}",
-                    'hreflang': self.config['server']['language']
-                })
-            if is_jws:
-                response['links'].append(
-                {
-                    'type': 'application/jose;profile=jws',
-                    'rel': 'prev',
-                    'title': 'items (prev)',
-                    'href': f"{bind_url(sec_url_base)}f=jws&offset={prev}",
-                    'hreflang': self.config['server']['language']
-                })
             if is_json:
                 response['links'].append(
                 {
@@ -837,33 +789,6 @@ class API:
 
             next_ = offset + returned
 
-            if is_dcs:
-                response['links'].append(
-                {
-                    'rel': 'next',
-                    'type': 'application/dcs+geo',
-                    'title': 'items (next)',
-                    'href': f"{bind_url(sec_url_base)}f=dcs+geo&offset={next_}",
-                    'hreflang': self.config['server']['language']
-                })
-            if is_jose:
-                response['links'].append(
-                {
-                    'rel': 'next',
-                    'type': 'application/jose',
-                    'title': 'items (next)',
-                    'href': f"{bind_url(sec_url_base)}f=jose&offset={next_}",
-                    'hreflang': self.config['server']['language']
-                }) 
-            if is_jws:
-                response['links'].append(
-                {
-                    'rel': 'next',
-                    'type': 'application/jose;profile=jws',
-                    'title': 'items (next)',
-                    'href': f"{bind_url(sec_url_base)}f=jws&offset={next_}",
-                    'hreflang': self.config['server']['language']
-                }) 
             if is_json:
                 response['links'].append(
                 {
@@ -1070,7 +995,7 @@ class API:
                     500, headers_, 'InvalidParameterValue', err)
 
         return headers_, 204, None
-
+    
     def get_exception(self, status, headers, code, description):
         """
         Provide exception report
