@@ -334,11 +334,11 @@ def get_dcs_response(result: tuple, token, key_challenge, key_challenge_method, 
     """
     if public_keys is not None:
         for public_key in public_keys:
-            encrypted_content = jwe.encrypt(content, public_key, algorithm='RSA-OAEP', encryption='A128GCM', kid=public_key['kid'], cty='application/geo+json').decode('utf-8')
+            encrypted_content = jwe.encrypt(content, public_key, algorithm='RSA-OAEP', encryption='A128GCM', kid=public_key['kid'], cty='geo+json').decode('utf-8')
     else:       
         key_data = create_key(token, key_challenge, key_challenge_method)
         key_secret = base64url_decode(key_data['k'])
-        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='application/geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
+        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
 
     print(content)
     content_dict = json.loads(content)
@@ -406,11 +406,11 @@ def get_jwe_response(result: tuple, token, key_challenge, key_challenge_method, 
     """
     if public_keys is not None:
         for public_key in public_keys:
-            encrypted_content = jwe.encrypt(content, public_key, algorithm='RSA-OAEP', encryption='A128GCM', kid=public_key['kid'], cty='application/geo+json').decode('utf-8')
+            encrypted_content = jwe.encrypt(content, public_key, algorithm='RSA-OAEP', encryption='A128GCM', kid=public_key['kid'], cty='geo+json').decode('utf-8')
     else:       
         key_data = create_key(token, key_challenge, key_challenge_method)
         key_secret = base64url_decode(key_data['k'])
-        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='application/geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
+        encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
 
     #clear_text = jwe.decrypt(encrypted_content,urlsafe_b64decode(key_data['k'] + b"=="))
 
@@ -749,7 +749,19 @@ def item_put(token, collection, item):
     result = api_.item_put(dict(request.headers), data, collection, item)
     return get_response(result)
 
+@BLUEPRINT.route('/collections/<collection>/items/<item>', methods=['DELETE'])
+@token_required
+def item_delete(token, collection, item):
+    """
+    OGC API collection items endpoint
 
+    :param collection: collection name
+    :param item: item identifier
+
+    :returns: HTTP response
+    """
+    result = api_.item_delete(dict(request.headers), item)
+    return '', 204
 
 @BLUEPRINT.route('/csw', methods=['GET', 'POST'])
 def csw():
