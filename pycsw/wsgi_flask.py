@@ -124,22 +124,23 @@ def token_required(f):
         accepts = ['application/dcs+geo', 'application/jose']
         fs = ['JWE', 'jwe', 'jose', 'dcs+geo']
 
-        if 'Prefer' not in request.headers:
-            if ('f' in request.args):
-                if (request.args['f'] not in fs):
-                    if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
-                        return f(None, *args, **kwargs)
-            else:
-                print(request.headers)
-                if ('Content-Type' in request.headers):
-                    if (request.headers['Content-Type'] not in accepts):
-                        print("1")
-                        return f(None, *args, **kwargs)
+        if request.method == 'GET':
+            if 'Prefer' not in request.headers:
+                if ('f' in request.args):
+                    if (request.args['f'] not in fs):
+                        if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
+                            return f(None, *args, **kwargs)
                 else:
-                    print("2")
-                    if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
-                        print("3")
-                        return f(None, *args, **kwargs)
+                    print(request.headers)
+                    if ('Content-Type' in request.headers):
+                        if (request.headers['Content-Type'] not in accepts):
+                            print("1")
+                            return f(None, *args, **kwargs)
+                    else:
+                        print("2")
+                        if ('Accept' in request.headers) and (request.headers['Accept'] not in accepts):
+                            print("3")
+                            return f(None, *args, **kwargs)
 
         if 'Authorization' in request.headers:
                 auth_header = request.headers['Authorization']
