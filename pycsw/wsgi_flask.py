@@ -624,7 +624,7 @@ def item(token, key_challenge, key_challenge_method, public_keys, collection='me
                     if len(kvp) == 2:
                         subscription_uri = unquote(kvp[1])
                         # could not figure out how to get flask to use the HTTP_X_FORWARDED_PROTO
-                        resources_uri = request.url.replace('http://','https://')
+                        resources_uri = resources_uri = request.host_url.replace('http://','https://') + 'pycsw' + request.full_path
                         print("resources-uri: " + resources_uri)
                         print("subscription: " + subscription_uri)
 
