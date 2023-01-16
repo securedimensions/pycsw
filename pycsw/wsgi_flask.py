@@ -122,7 +122,7 @@ def token_required(f):
         token = None
 
         accepts = ['application/dcs+geo', 'application/jose']
-        fs = ['JWE', 'jwe', 'jose', 'dcs+geo']
+        fs = ['JWE', 'jwe', 'jose', 'dcs+geo', 'dcs geo']
 
         if request.method == 'GET':
             if 'Prefer' not in request.headers:
@@ -166,7 +166,7 @@ def token_required(f):
 def validate_qs_arguments():
     def decorator(f):
         accepts=["application/dcs+geo","application/jose"]
-        fs=["JWE","jwe","jose", "dcs+geo"]
+        fs=["JWE","jwe","jose", "dcs+geo", "dcs geo"]
         key_challenge = None
         
         print("validating arguments")
@@ -341,6 +341,7 @@ def get_dcs_response(result: tuple, token, key_challenge, key_challenge_method, 
         key_secret = base64url_decode(key_data['k'])
         encrypted_content = jwe.encrypt(content, key_secret, algorithm='dir', encryption=key_data['alg'], kid=key_data['kid'], cty='geo+json', additional_headers={'kurl': key_data['kurl'], 'crit': ['kurl']}).decode('utf-8')
 
+    print("content:")
     print(content)
     content_dict = json.loads(content)
     confidentiality_information = {'policy_identifier': 'TB18', 'classification': 'unclassified'}
@@ -572,7 +573,7 @@ def items(token, key_challenge, key_challenge_method, private_keys, collection='
     features = api_.items(dict(request.headers), request.get_json(silent=True), request.args.to_dict(), collection, stac_item)
 
     if ('f' in request.args):
-        if (request.args['f'] == 'dcs+geo'):
+        if (request.args['f'] == 'dcs+geo') or (request.args['f'] == 'dcs geo'):
             return get_dcs_response(features, token, key_challenge, key_challenge_method, private_keys)
 
         if (request.args['f'] == 'JWE') or (request.args['f'] == 'jwe') or (request.args['f'] == 'jose'):
@@ -643,7 +644,7 @@ def item(token, key_challenge, key_challenge_method, public_keys, collection='me
 
         feature = api_.item(dict(request.headers), request.args, collection, item, stac_item)
         if ('f' in request.args):
-            if (request.args['f'] == 'dcs+geo'):
+            if (request.args['f'] == 'dcs+geo') or (request.args['f'] == 'dcs geo'):
                 return get_dcs_response(feature, token, key_challenge, key_challenge_method, public_keys)
             
             if (request.args['f'] == 'JWE') or (request.args['f'] == 'jwe') or (request.args['f'] == 'jose'):

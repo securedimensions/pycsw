@@ -191,6 +191,8 @@ class API:
                 content_type = 'application/xml'
             elif format_ == 'html':
                 content_type = 'text/html'
+            elif format_ == 'dcs geo':
+                content_type = 'application/dcs+geo'
             elif format_ == 'dcs+geo':
                 content_type = 'application/dcs+geo'
             elif (format_ == 'jws'):
